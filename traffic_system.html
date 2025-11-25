@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Traffic Navigation System</title>
+    <style>
+        /* --- 1. NAVIGATION SYSTEM UI STYLES --- */
+        :root {
+            --road-color: #2b2b2b;
+            --line-color: #f1c40f;
+            --bg-color: #121212;
+            --text-color: #e0e0e0;
+            --accent: #00d2ff;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h2 { border-bottom: 2px solid var(--accent); padding-bottom: 10px; }
+
+        /* Dashboard Layout */
+        .dashboard {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        /* The Map / Intersection View */
+        .nav-map {
+            width: 500px;
+            height: 500px;
+            background-color: #1e3c2f; /* Map Grass Color */
+            position: relative;
+            border-radius: 15px;
+            overflow: hidden;
+            border: 4px solid #333;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        /* Roads */
+        .road {
+            position: absolute;
+            background-color: var(--road-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .road.vertical {
+            width: 120px;
+            height: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border-left: 2px dashed #555;
+            border-right: 2px dashed #555;
+            flex-direction: column; /* Stack cars vertically */
+            justify-content: flex-start; /* Start from top/bottom */
+        }
+
+        .road.horizontal {
+            height: 120px;
+            width: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+            border-top: 2px dashed #555;
+            border-bottom: 2px dashed #555;
+            flex-direction: row; /* Stack cars horizontally */
+        }
+
+        /* Lane Markers */
+        .lane-divider {
+            position: absolute;
+            background: var(--line-color);
+        }
+        .vertical .lane-divider { width: 2px; height: 100%; border-right: 2px dashed var(--line-color); opacity: 0.5; }
+        .horizontal .lane-divider { height: 2px; width: 100%; border-bottom: 2px dashed var(--line-color); opacity: 0.5; }
+
+        /* Stop Lines */
+        .stop-line {
+            position: absolute;
+            background: white;
+            z-index: 1;
+        }
+        .v-stop { width: 120px; height: 6px; top: 180px; } /* For Vertical Lane */
+        .h-stop { width: 6px; height: 120px; left: 180px; } /* For Horizontal Lane */
+
+        /* VEHICLES (The "Length" Objects) */
+        .vehicle {
+            background-color: white;
+            border-radius: 4px;
+            position: absolute;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            transition: all 0.5s ease;
+            z-index: 10;
+        }
+        
+        /* Vehicle Types */
+        .car { background: #3498db; }
+        .truck { background: #e74c3c; }
+
+        /* Orientation classes for JS to use */
+        .v-lane-container {
+            position: absolute;
+            width: 50px;
+            height: 200px;
+            top: -20px; /* Start above */
+            left: 50%;
+            transform: translateX(-25px);
+            display: flex;
+            flex-direction: column-reverse; /* Stack from stop line upwards */
+            align-items: center;
+            gap: 5px;
+            padding-bottom: 195px; /* Push to stop line */
+        }
+
+        .h-lane-container {
+            position: absolute;
+            width: 200px;
+            height: 50px;
+            left: -20px;
+            top: 50%;
+            transform: translateY(-25px);
+            display: flex;
+            flex-direction: row-reverse;
+            align-items: center;
+            gap: 5px;
+            padding-right: 195px;
+        }
+
+        /* Traffic Lights */
+        .signal {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #333;
+            border: 2px solid #fff;
+            z-index: 20;
+            box-shadow: 0 0 10px rgba(0,0,0,0.8);
+            transition: background 0.3s;
+        }
+        
+        .signal.vertical { top: 140px; left: 320px; }
+        .signal.horizontal { top: 320px; left: 140px; }
+
+        .red { background-color: #ff0000; box-shadow: 0 0 20px #ff0000; }
+        .green { background-color: #00ff00; box-shadow: 0 0 20px #00ff00; }
+
+        /* --- INFO PANELS --- */
+        .panel {
+            background: #222;
+            padding: 20px;
+            border-radius: 10px;
+            width: 300px;
+            border: 1px solid #444;
+        }
+        
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .highlight { color: var(--accent); font-weight: bold; }
+        .btn {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+        }
+        .btn:hover { background: #00bcd4; }
+
+        .log-box {
+            font-family: monospace;
+            font-size: 12px;
+            color: #888;
+            height: 100px;
+            overflow-y: auto;
+            background: #000;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>AI Traffic Control: Length-Based Scanner</h2>
+    
+
+    <div class="dashboard">
+        
+        <div class="nav-map">
+            <div class="road vertical">
+                <div class="lane-divider"></div>
+                <div class="v-lane-container" id="lane1-container"></div>
+            </div>
+
+            <div class="road horizontal">
+                <div class="lane-divider"></div>
+                <div class="h-lane-container" id="lane2-container"></div>
+            </div>
+
+            <div class="stop-line v-stop"></div>
+            <div class="stop-line h-stop"></div>
+
+            <div class="signal vertical red" id="sig-v"></div>
+            <div class="signal horizontal red" id="sig-h"></div>
+
+            <div style="position:absolute; top:240px; left:240px; width:20px; height:20px; background:#444; z-index:0;"></div>
+        </div>
+
+        <div class="panel">
+            <h3>System Status</h3>
+            
+            <div class="data-row">
+                <span>Lane 1 (Vertical) Status:</span>
+                <span id="status-l1" class="highlight">Analyzing...</span>
+            </div>
+            <div class="data-row">
+                <span>Length Detected:</span>
+                <span id="len-l1">0 m</span>
+            </div>
+            
+            <hr style="border-color: #444;">
+
+            <div class="data-row">
+                <span>Lane 2 (Horizontal) Status:</span>
+                <span id="status-l2" class="highlight">Analyzing...</span>
+            </div>
+            <div class="data-row">
+                <span>Length Detected:</span>
+                <span id="len-l2">0 m</span>
+            </div>
+
+            <hr style="border-color: #444;">
+
+            <div class="data-row">
+                <span>Active Signal:</span>
+                <span id="active-sig" style="color: #fff;">WAITING</span>
+            </div>
+            <div class="data-row">
+                <span>Timer:</span>
+                <span id="timer" class="highlight" style="font-size: 24px;">0s</span>
+            </div>
+
+            <button class="btn" onclick="startSimulation()">Generate New Traffic</button>
+            
+            <div class="log-box" id="api-logs">Waiting for API...</div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        // 1px in CSS = approx 0.1 meters in real life for this scale
+        const CAR_LENGTH_PX = 40;  // Standard car
+        const TRUCK_LENGTH_PX = 90; // Large vehicle
+        const SCALE_FACTOR = 0.1;   // Multiplier to get meters
+
+        // DOM Elements
+        const els = {
+            l1Container: document.getElementById('lane1-container'),
+            l2Container: document.getElementById('lane2-container'),
+            l1Len: document.getElementById('len-l1'),
+            l2Len: document.getElementById('len-l2'),
+            sigV: document.getElementById('sig-v'),
+            sigH: document.getElementById('sig-h'),
+            timer: document.getElementById('timer'),
+            logs: document.getElementById('api-logs'),
+            status1: document.getElementById('status-l1'),
+            status2: document.getElementById('status-l2'),
+            activeSig: document.getElementById('active-sig')
+        };
+
+        // --- 1. SIMULATE TRAFFIC (THE "REAL WORLD") ---
+        function generateRandomTraffic(containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = ''; // Clear lane
+            
+            // Random number of vehicles (0 to 6)
+            const count = Math.floor(Math.random() * 7); 
+            let totalPixelLength = 0;
+
+            for (let i = 0; i < count; i++) {
+                const isTruck = Math.random() > 0.7; // 30% chance of truck
+                const div = document.createElement('div');
+                div.classList.add('vehicle');
+                
+                // Styling based on type
+                if (isTruck) {
+                    div.classList.add('truck');
+                    // Set dimensions based on orientation
+                    if(containerId.includes('lane1')) { // Vertical
+                        div.style.width = '30px'; div.style.height = TRUCK_LENGTH_PX + 'px';
+                    } else { // Horizontal
+                        div.style.height = '30px'; div.style.width = TRUCK_LENGTH_PX + 'px';
+                    }
+                    totalPixelLength += TRUCK_LENGTH_PX;
+                } else {
+                    div.classList.add('car');
+                    if(containerId.includes('lane1')) {
+                        div.style.width = '30px'; div.style.height = CAR_LENGTH_PX + 'px';
+                    } else {
+                        div.style.height = '30px'; div.style.width = CAR_LENGTH_PX + 'px';
+                    }
+                    totalPixelLength += CAR_LENGTH_PX;
+                }
+                container.appendChild(div);
+            }
+            return totalPixelLength;
+        }
+
+        // --- 2. THE API MOCK (Simulating Camera Scan) ---
+        // In a real project, this would fetch JSON from a Python server
+        async function mockCameraAPI() {
+            log("API: Scanning Camera Feed...");
+            
+            // Generate visuals and get the "Actual" length from the DOM generation
+            // In real life, the camera sends the image, Python calculates length
+            const l1Pixels = generateRandomTraffic('lane1-container');
+            const l2Pixels = generateRandomTraffic('lane2-container');
+
+            // Simulate network delay
+            await new Promise(r => setTimeout(r, 800));
+
+            // Convert pixels to meters
+            const data = {
+                lane1: { lengthMeters: (l1Pixels * SCALE_FACTOR).toFixed(1) },
+                lane2: { lengthMeters: (l2Pixels * SCALE_FACTOR).toFixed(1) }
+            };
+            
+            log(`API: Data Received. L1: ${data.lane1.lengthMeters}m, L2: ${data.lane2.lengthMeters}m`);
+            return data;
+        }
+
+        // --- 3. LOGIC CONTROLLER ---
+        async function startSimulation() {
+            // Reset Lights to Red
+            els.sigV.className = "signal vertical red";
+            els.sigH.className = "signal horizontal red";
+            els.activeSig.innerText = "CALCULATING...";
+            els.timer.innerText = "0s";
+
+            // 1. Call API
+            const data = await mockCameraAPI();
+
+            // 2. Update UI with Data
+            els.l1Len.innerText = data.lane1.lengthMeters + " m";
+            els.l2Len.innerText = data.lane2.lengthMeters + " m";
+
+            const len1 = parseFloat(data.lane1.lengthMeters);
+            const len2 = parseFloat(data.lane2.lengthMeters);
+
+            // 3. Decision Logic
+            let greenTime = 0;
+            
+            if (len1 === 0 && len2 === 0) {
+                log("Logic: No Traffic. Standby.");
+                els.activeSig.innerText = "IDLE";
+                return;
+            }
+
+            if (len1 >= len2) {
+                // Lane 1 Wins
+                greenTime = calculateTime(len1);
+                log(`Logic: Lane 1 Priority. Time: ${greenTime}s`);
+                activateLight('vertical', greenTime);
+            } else {
+                // Lane 2 Wins
+                greenTime = calculateTime(len2);
+                log(`Logic: Lane 2 Priority. Time: ${greenTime}s`);
+                activateLight('horizontal', greenTime);
+            }
+        }
+
+        // --- 4. CALCULATE TIME ---
+        function calculateTime(lengthMeters) {
+            // Formula: 2 seconds minimum + 0.8 seconds per meter of vehicle length
+            // This accounts for "Startup Delay" + "Flow Rate"
+            let time = 3 + (lengthMeters * 0.8);
+            return Math.ceil(time);
+        }
+
+        // --- 5. ANIMATION HANDLER ---
+        function activateLight(orientation, seconds) {
+            // Set visuals
+            if (orientation === 'vertical') {
+                els.sigV.className = "signal vertical green";
+                els.status1.innerText = "GO (Green)";
+                els.status1.style.color = "#00ff00";
+                els.status2.innerText = "STOP (Red)";
+                els.status2.style.color = "red";
+                els.activeSig.innerText = "LANE 1 GREEN";
+            } else {
+                els.sigH.className = "signal horizontal green";
+                els.status2.innerText = "GO (Green)";
+                els.status2.style.color = "#00ff00";
+                els.status1.innerText = "STOP (Red)";
+                els.status1.style.color = "red";
+                els.activeSig.innerText = "LANE 2 GREEN";
+            }
+
+            // Countdown
+            let timeLeft = seconds;
+            els.timer.innerText = timeLeft + "s";
+
+            const interval = setInterval(() => {
+                timeLeft--;
+                els.timer.innerText = timeLeft + "s";
+                
+                if (timeLeft <= 0) {
+                    clearInterval(interval);
+                    // Turn Red again
+                    els.sigV.className = "signal vertical red";
+                    els.sigH.className = "signal horizontal red";
+                    els.activeSig.innerText = "CYCLE DONE";
+                    els.status1.innerText = "STOP";
+                    els.status2.innerText = "STOP";
+                    els.status1.style.color = "#fff";
+                    els.status2.style.color = "#fff";
+                    
+                    log("System: Cycle Complete. Restarting...");
+                    setTimeout(startSimulation, 2000); // Auto restart
+                }
+            }, 1000);
+        }
+
+        function log(msg) {
+            const p = document.createElement('div');
+            p.innerText = "> " + msg;
+            els.logs.prepend(p);
+        }
+
+        // Initial Start
+        setTimeout(startSimulation, 1000);
+
+    </script>
+    <script>
+        async function getRealCameraData() {
+    const response = await fetch('http://localhost:5000/scan-traffic');
+    const data = await response.json();
+    return data; // Returns { lane1: 40.5, lane2: 12.0 }
+}
+    </script>
+</body>
+</html>
